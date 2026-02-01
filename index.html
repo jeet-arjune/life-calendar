@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Life + Day Calendar</title>
+
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background: black;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+
+    <canvas id="cal" width="1080" height="2340"></canvas>
+
+    <script>
+        /* ================= CANVAS ================= */
+        const canvas = document.getElementById("cal");
+        const ctx = canvas.getContext("2d");
+        const WIDTH = canvas.width;
+        const HEIGHT = canvas.height;
+
+        /* ================= LOCK SCREEN SAFE ZONE (iPhone 11 tuned) ================= */
+        const LOCK_TOP = 420; // below clock
+        const LOCK_BOTTOM = 1850; // above flashlight / camera
+        const SAFE_HEIGHT = LOCK_BOTTOM - LOCK_TOP;
+
+        /* ================= COLORS ================= */
+        const YEAR_PAST = "#ffffff";
+        const YEAR_TODAY = "#ff8a3d";
+        const YEAR_FUTURE = "#8a8a8a";
+
+        const DAY_PAST = "#d32f2f";
+        const DAY_TODAY = "#d32f2f";
+        const DAY_OUTLINE = "#000000";
+
+        /* ================= BACKGROUND ================= */
+        const bg = new Image();
+        bg.src = "bg.jpg";
+        bg.onload = () => render();
+
+        function drawBackground() {
+            const imgRatio = bg.width / bg.height;
+            const canvasRatio = WIDTH / HEIGHT;
+            let w, h, x, y;
+
+            if (imgRatio > canvasRatio) {
+                h = HEIGHT;
+                w = HEIGHT * imgRatio;
+                x = (WIDTH - w) / 2;
+                y = 0;
+            } else {
+                w = WIDTH;
+                h = WIDTH / imgRatio;
+                x = 0;
+                y = (HEIGHT - h) / 2;
+            }
+            ctx.drawImage(bg, x, y, w, h);
+        }
+
+        function clearCanvas() {
+            ctx.clearRect(0, 0, WIDTH, HEIGHT);
+            drawBackground();
+        }
+
+        /* ================= TIME HELPERS ================= */
+        function isLeapYear(y) {
+            return (y % 4 === 0 && y % 100 !== 0) || (y % 400 === 0);
+        }
+
+        function totalDaysInYear(y) {
+            return isLeapYear(y) ? 366 : 365;
+        }
+
+        function dayOfYear(date) {
+            const start = Date.UTC(date.getFullYear(), 0, 1);
+            const today = Date.UTC(date.getFullYear(), date.getMonth(), date.getDate());
+            return Math.floor((today - start) / 86400000);
+        }
+
+        /* ================= ROUNDED RECT ================= */
+        function drawRoundedRect(x, y, w, h, r) {
+            ctx.beginPath();
+            ctx.moveTo(x + r, y);
+            ctx.lineTo(x + w - r, y);
+            ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+            ctx.lineTo(x + w, y + h - r);
+            ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+            ctx.lineTo(x + r, y + h);
+            ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+            ctx.lineTo(x, y + r);
+            ctx.quadraticCurveTo(x, y, x + r, y);
+            ctx.closePath();
+        }
+
+        /* ================= MODE ================= */
+        let mode = "year";
+
+        /* ================= YEAR CALENDAR ================= */
+        const YEAR_COLS = 15;
+        const YEAR_RADIUS = 6;
+        const YEAR_GAP = 26;
+
+        function drawYearCalendar() {
+            clearCanvas();
+
+            const now = new Date();
+            const TOTAL = totalDaysInYear(now.getFullYear());
+            const todayIndex = dayOfYear(now);
+
+            const daysPassed = todayIndex + 1;
+            const daysRemaining = TOTAL - daysPassed;
+
+            const ROWS = Math.ceil(TOTAL / YEAR_COLS);
+            const gridW = (YEAR_COLS - 1) * YEAR_GAP;
+            const gridH = (ROWS - 1) * YEAR_GAP;
+
+            const startX = (WIDTH - gridW) / 2;
+            const startY = LOCK_TOP + (SAFE_HEIGHT - gridH) / 2;
+
+            const padding = 40;
+            const frameX = startX - padding;
+            const frameY = startY - padding;
+            const frameW = gridW + padding * 2;
+            const frameH = gridH + padding * 2;
+
+            // Frame
+            drawRoundedRect(frameX, frameY, frameW, frameH, 28);
+            ctx.strokeStyle = "rgba(255,255,255,0.12)";
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+
+            // Dots
+            let d = 0;
+            for (let r = 0; r < ROWS; r++) {
+                for (let c = 0; c < YEAR_COLS; c++) {
+                    if (d >= TOTAL) break;
+
+                    const x = startX + c * YEAR_GAP;
+                    const y = startY + r * YEAR_GAP;
+
+                    ctx.beginPath();
+                    ctx.arc(x, y, YEAR_RADIUS, 0, Math.PI * 2);
+
+                    if (d < todayIndex) {
+                        ctx.fillStyle = YEAR_PAST;
+                        ctx.fill();
+                    } else if (d === todayIndex) {
+                        ctx.fillStyle = YEAR_TODAY;
+                        ctx.fill();
+                    } else {
+                        ctx.strokeStyle = YEAR_FUTURE;
+                        ctx.lineWidth = 2;
+                        ctx.stroke();
+                    }
+                    d++;
+                }
+            }
+
+            // Days passed | left (below frame)
+            ctx.font = "500 20px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "top";
+            ctx.fillStyle = "rgba(211,47,47,0.45)";
+            ctx.shadowColor = "rgba(211,47,47,0.5)";
+            ctx.shadowBlur = 8;
+
+            ctx.fillText(
+                `${daysPassed} days passed | ${daysRemaining} days left`,
+                WIDTH / 2,
+                frameY + frameH + 20
+            );
+
+            ctx.shadowBlur = 0;
+        }
+
+        /* ================= DAY CALENDAR ================= */
+        function drawDayCalendar() {
+            clearCanvas();
+
+            const now = new Date();
+            const currentHour = now.getHours();
+            const currentMinute = now.getMinutes();
+
+            const HOURS = 24;
+            const COLS = 5;
+            const RADIUS = 12;
+            const GAP = 70;
+
+            const ROWS = Math.ceil(HOURS / COLS);
+            const gridW = (COLS - 1) * GAP;
+            const gridH = (ROWS - 1) * GAP;
+
+            const startX = (WIDTH - gridW) / 2;
+            const startY = LOCK_TOP + (SAFE_HEIGHT - gridH) / 2;
+
+            const padding = 40;
+            const frameX = startX - padding;
+            const frameY = startY - padding;
+            const frameW = gridW + padding * 2;
+            const frameH = gridH + padding * 2;
+
+            // Frame
+            drawRoundedRect(frameX, frameY, frameW, frameH, 28);
+            ctx.strokeStyle = "rgba(255,255,255,0.12)";
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+
+            // Dots
+            let h = 0;
+            for (let r = 0; r < ROWS; r++) {
+                for (let c = 0; c < COLS; c++) {
+                    if (h >= HOURS) break;
+
+                    const x = startX + c * GAP;
+                    const y = startY + r * GAP;
+
+                    ctx.beginPath();
+                    ctx.arc(x, y, RADIUS, 0, Math.PI * 2);
+
+                    if (h < currentHour) {
+                        ctx.fillStyle = DAY_PAST;
+                        ctx.fill();
+                    } else if (h === currentHour) {
+                        ctx.strokeStyle = DAY_OUTLINE;
+                        ctx.lineWidth = 3;
+                        ctx.stroke();
+
+                        const progress = currentMinute / 60;
+                        const startA = -Math.PI / 2;
+                        const endA = startA + progress * Math.PI * 2;
+
+                        ctx.beginPath();
+                        ctx.moveTo(x, y);
+                        ctx.arc(x, y, RADIUS, startA, endA);
+                        ctx.closePath();
+                        ctx.fillStyle = DAY_TODAY;
+                        ctx.fill();
+                    } else {
+                        ctx.strokeStyle = DAY_OUTLINE;
+                        ctx.lineWidth = 3;
+                        ctx.stroke();
+                    }
+                    h++;
+                }
+            }
+        }
+
+        /* ================= RENDER ================= */
+        function render() {
+            mode === "year" ? drawYearCalendar() : drawDayCalendar();
+        }
+
+        setInterval(() => {
+            mode = mode === "year" ? "day" : "year";
+            render();
+        }, 15000);
+
+        setInterval(() => {
+            if (mode === "day") drawDayCalendar();
+        }, 60000);
+    </script>
+
+</body>
+
+</html>
